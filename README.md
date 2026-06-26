@@ -12,7 +12,8 @@ The goal of this project is to show how an external React application can connec
 - Customer support dashboard backed by Salesforce Cases
 - Salesforce Cases list and case detail views
 - AI-style assistant page with guided chat workflows
-- Create real Salesforce Cases from chat
+- Create real Salesforce Cases from chat through direct Salesforce REST API
+- Send a case-creation request to a configured Headless Agentforce agent
 - Update Salesforce Contacts by email
 - Request callbacks by creating Salesforce Cases
 - Salesforce REST API integration through backend API routes
@@ -34,7 +35,12 @@ Salesforce Objects such as Contact, Account, and Case
 
 ## Current Version
 
-The current version connects to Salesforce using OAuth and performs real Salesforce REST API actions:
+The current version connects to Salesforce using OAuth and supports two integration paths:
+
+1. Direct Salesforce REST API actions.
+2. A configurable Agentforce message route for a Headless Agent demo.
+
+Direct Salesforce REST API actions:
 
 - Create Case
 - Get Cases
@@ -42,7 +48,13 @@ The current version connects to Salesforce using OAuth and performs real Salesfo
 - Update Contact
 - Request Callback
 
-Agentforce integration is planned as the next phase. A future version can route chat messages through the Agentforce API, where the Salesforce agent can decide which Flow or action to execute.
+Agentforce demo path:
+
+- Send a fixed case-creation request to `/api/agentforce/message`
+- Forward that message to the configured Headless Agentforce API endpoint
+- Display the agent response in the Assistant chat
+
+A future version can expand the Agentforce path so more chat messages are routed through Agentforce and the Salesforce agent decides which Flow or action to execute.
 
 ## Salesforce Setup
 
@@ -82,6 +94,8 @@ SALESFORCE_CLIENT_ID=your_client_id
 SALESFORCE_CLIENT_SECRET=your_client_secret
 SALESFORCE_REDIRECT_URI=http://localhost:3000/api/auth/callback
 SALESFORCE_API_VERSION=v61.0
+SALESFORCE_AGENT_ID=
+SALESFORCE_AGENT_API_URL=
 ```
 
 For a Salesforce sandbox, use:
@@ -114,11 +128,11 @@ http://localhost:3000
 
 Click **Sign in with Salesforce** and complete the OAuth login.
 
-After login, use the Assistant page to create a Salesforce Case, update a Contact, or request a callback.
+After login, use the Assistant page to create a Salesforce Case directly through REST API, create a case with Agentforce, update a Contact, or request a callback.
 
 ## Available Workflows
 
-### Create Case
+### Create Case with Direct REST API
 
 The Assistant can collect:
 
@@ -127,7 +141,17 @@ The Assistant can collect:
 - Case description
 - Priority
 
-Then it creates a real Salesforce Case.
+Then it creates a real Salesforce Case using `/api/salesforce/create-case`.
+
+### Create Case with Agentforce
+
+The Assistant includes a **Create Case with Agent** action. It sends this message to `/api/agentforce/message`:
+
+```text
+Create a support case for muthuselvithanu@gmail.com. Subject is Billing issue. Description is customer was charged twice. Priority is High.
+```
+
+The backend forwards the message to the configured Headless Agentforce API endpoint using the existing Salesforce OAuth access token.
 
 ### Update Contact
 
@@ -176,3 +200,4 @@ The frontend does not expose the Salesforce Client Secret or Salesforce access t
 This project demonstrates a headless Salesforce architecture where React provides the user experience and Salesforce acts as the secure backend system. It shows practical knowledge of React, Next.js, Salesforce OAuth, REST APIs, secure API routes, and customer support workflows.
 
 GitHub: https://github.com/muthuselvithanu
+

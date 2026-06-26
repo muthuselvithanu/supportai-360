@@ -38,9 +38,13 @@ type ChatPanelProps = {
   startCaseFlowToken?: number;
   startContactFlowToken?: number;
   startCallbackFlowToken?: number;
+  startAgentCaseToken?: number;
 };
 
 const priorities: Priority[] = ["Low", "Medium", "High"];
+const agentforceCaseMessage =
+  "Create a support case for muthuselvithanu@gmail.com. Subject is Billing issue. Description is customer was charged twice. Priority is High.";
+
 const emptyCaseDraft: CaseDraft = {
   contactEmail: "",
   subject: "",
@@ -114,7 +118,8 @@ function cleanOptionalAnswer(value: string) {
 export function ChatPanel({
   startCaseFlowToken = 0,
   startContactFlowToken = 0,
-  startCallbackFlowToken = 0
+  startCallbackFlowToken = 0,
+  startAgentCaseToken = 0
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     createMessage(
@@ -132,6 +137,7 @@ export function ChatPanel({
   const lastCaseTokenRef = useRef(startCaseFlowToken);
   const lastContactTokenRef = useRef(startContactFlowToken);
   const lastCallbackTokenRef = useRef(startCallbackFlowToken);
+  const lastAgentCaseTokenRef = useRef(startAgentCaseToken);
 
   function addAssistantMessage(content: string) {
     setMessages((current) => [...current, createMessage("assistant", content)]);
@@ -474,10 +480,56 @@ export function ChatPanel({
           createMessage("assistant", "I'll create a callback request. What is the customer's email?")
         ]);
       }
+
+      if (startAgentCaseToken !== lastAgentCaseTokenRef.current) {
+        lastAgentCaseTokenRef.current = startAgentCaseToken;
+        setFlowStep("creating");
+        setIsWorking(true);
+        setMessages((current) => [
+          ...current,
+          createMessage("user", agentforceCaseMessage),
+          createMessage("assistant", "Sending this request to Agentforce...")
+        ]);
+
+        void fetch("/api/agentforce/message", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: agentforceCaseMessage })
+        })
+          .then(async (response) => {
+            const data = await response.json();
+
+            if (!response.ok) {
+              setMessages((current) => [
+                ...current,
+                createMessage(
+                  "assistant",
+                  data.message ?? data.error ?? "Unable to send the request to Agentforce."
+                )
+              ]);
+              return;
+            }
+
+            setMessages((current) => [
+              ...current,
+              createMessage("assistant", data.responseText ?? "Agentforce completed the request.")
+            ]);
+          })
+          .catch(() => {
+            setMessages((current) => [
+              ...current,
+              createMessage("assistant", "Unable to reach the Agentforce message endpoint.")
+            ]);
+          })
+          .finally(() => {
+            resetFlow();
+            setIsWorking(false);
+          });
+      }
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [startCaseFlowToken, startContactFlowToken, startCallbackFlowToken, isWorking]);
+  }, [startCaseFlowToken, startContactFlowToken, startCallbackFlowToken, startAgentCaseToken, isWorking]);
 
   const showPriorityButtons = flowType === "case" && flowStep === "case-priority";
 
@@ -584,4 +636,6 @@ export function ChatPanel({
     </section>
   );
 }
+
+
 

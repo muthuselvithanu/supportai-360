@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { BriefcaseBusiness, CalendarClock, MessageSquarePlus, UserRoundPen } from "lucide-react";
+import { Bot, BriefcaseBusiness, CalendarClock, MessageSquarePlus, UserRoundPen } from "lucide-react";
 import { ChatPanel } from "@/components/chat-panel";
 import { SalesforceActions } from "@/components/salesforce/salesforce-actions";
 
@@ -10,6 +10,7 @@ export default function AssistantPage() {
   const [caseFlowToken, setCaseFlowToken] = useState(0);
   const [contactFlowToken, setContactFlowToken] = useState(0);
   const [callbackFlowToken, setCallbackFlowToken] = useState(0);
+  const [agentCaseToken, setAgentCaseToken] = useState(0);
 
   function startCaseFlow() {
     setCaseFlowToken((current) => current + 1);
@@ -23,12 +24,17 @@ export default function AssistantPage() {
     setCallbackFlowToken((current) => current + 1);
   }
 
+  function startAgentCaseFlow() {
+    setAgentCaseToken((current) => current + 1);
+  }
+
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
       <ChatPanel
         startCaseFlowToken={caseFlowToken}
         startContactFlowToken={contactFlowToken}
         startCallbackFlowToken={callbackFlowToken}
+        startAgentCaseToken={agentCaseToken}
       />
 
       <aside className="space-y-4">
@@ -54,6 +60,14 @@ export default function AssistantPage() {
             </button>
             <button
               type="button"
+              onClick={startAgentCaseFlow}
+              className="flex h-11 items-center gap-3 rounded-md border border-line px-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <Bot size={17} />
+              Create Case with Agent
+            </button>
+            <button
+              type="button"
               onClick={startContactFlow}
               className="flex h-11 items-center gap-3 rounded-md border border-line px-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
@@ -76,6 +90,7 @@ export default function AssistantPage() {
           <div className="mt-4 space-y-3">
             {[
               ["I need to create a billing case", startCaseFlow],
+              ["Create Case with Agent", startAgentCaseFlow],
               ["Update a contact phone number", startContactFlow],
               ["Request a callback", startCallbackFlow]
             ].map(([label, handler]) => (
@@ -94,3 +109,4 @@ export default function AssistantPage() {
     </div>
   );
 }
+
