@@ -3,18 +3,38 @@
   raw: unknown;
 };
 
+type AgentforceSessionResponse = {
+  sessionId?: string;
+  id?: string;
+  sessionInfo?: {
+    sessionId?: string;
+  };
+};
+
 const DEFAULT_AGENT_MESSAGE =
   "Create a support case for muthuselvithanu@gmail.com. Subject is Billing issue. Description is customer was charged twice. Priority is High.";
 
+function normalizeUrl(value: string) {
+  const withProtocol = value.startsWith("http") ? value : `https://${value}`;
+  return withProtocol.replace(/\/$/, "");
+}
+
 function getAgentforceConfig() {
   const agentId = process.env.SALESFORCE_AGENT_ID;
-  const apiUrl = process.env.SALESFORCE_AGENT_API_URL;
+  const apiHost = process.env.SALESFORCE_AGENT_API_HOST;
+  const myDomainUrl = process.env.SALESFORCE_MY_DOMAIN_URL;
 
-  if (!agentId || !apiUrl) {
-    throw new Error("Missing Agentforce config. Set SALESFORCE_AGENT_ID and SALESFORCE_AGENT_API_URL.");
+  if (!agentId || !apiHost || !myDomainUrl) {
+    throw new Error(
+      "Missing Agentforce config. Set SALESFORCE_AGENT_ID, SALESFORCE_AGENT_API_HOST, and SALESFORCE_MY_DOMAIN_URL."
+    );
   }
 
-  return { agentId, apiUrl };
+  return {
+    agentId,
+    apiHost: normalizeUrl(apiHost),
+    myDomainUrl: normalizeUrl(myDomainUrl)
+  };
 }
 
 function contentToText(value: unknown): string | null {
@@ -29,8 +49,9 @@ function contentToText(value: unknown): string | null {
           return item;
         }
 
-        if (item && typeof item === "object" && "text" in item) {
-          return contentToText((item as { text: unknown }).text);
+        if (item && typeof item === "object") {
+          const record = item as Record<string, unknown>;
+          return contentToText(record.text) ?? contentToText(record.content) ?? contentToText(record.message);
         }
 
         return null;
@@ -43,6 +64,10 @@ function contentToText(value: unknown): string | null {
   return null;
 }
 
+function extractSessionId(payload: AgentforceSessionResponse) {
+  return payload.sessionId ?? payload.id ?? payload.sessionInfo?.sessionId;
+}
+
 function extractAgentResponseText(payload: unknown) {
   if (!payload || typeof payload !== "object") {
     return typeof payload === "string" ? payload : "Agentforce returned an empty response.";
@@ -53,18 +78,19 @@ function extractAgentResponseText(payload: unknown) {
     contentToText(data.text) ??
     contentToText(data.message) ??
     contentToText(data.response) ??
-    contentToText(data.output);
+    contentToText(data.output) ??
+    contentToText(data.messages);
 
   if (directText) {
     return directText;
   }
 
-  if (Array.isArray(data.messages) && data.messages.length > 0) {
-    const latestMessage = data.messages[data.messages.length - 1];
+  if (Array.isArray(data.responses) && data.responses.length > 0) {
+    const latestResponse = data.responses[data.responses.length - 1];
 
-    if (latestMessage && typeof latestMessage === "object") {
-      const latest = latestMessage as Record<string, unknown>;
-      const latestText = contentToText(latest.content) ?? contentToText(latest.text) ?? contentToText(latest.message);
+    if (latestResponse && typeof latestResponse === "object") {
+      const latest = latestResponse as Record<string, unknown>;
+      const latestText = contentToText(latest.message) ?? contentToText(latest.content) ?? contentToText(latest.text);
 
       if (latestText) {
         return latestText;
@@ -75,52 +101,124 @@ function extractAgentResponseText(payload: unknown) {
   return JSON.stringify(payload);
 }
 
+async function parseResponse(response: Response) {
+  const rawText = await response.text();
+
+  if (!rawText) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawText) as unknown;
+  } catch {
+    return rawText;
+  }
+}
+
+async function agentforceRequest<T>(
+  accessToken: string,
+  url: string,
+  init: RequestInit
+): Promise<T> {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      ...(init.headers ?? {})
+    },
+    cache: "no-store"
+  });
+  const payload = await parseResponse(response);
+
+  if (!response.ok) {
+    throw new Error(`Agentforce request failed: ${response.status} ${JSON.stringify(payload)}`);
+  }
+
+  return payload as T;
+}
+
+async function startAgentforceSession(
+  accessToken: string,
+  agentId: string,
+  apiHost: string,
+  myDomainUrl: string
+) {
+  const sessionKey = crypto.randomUUID();
+  const url = `${apiHost}/einstein/ai-agent/v1/agents/${agentId}/sessions`;
+  const payload = await agentforceRequest<AgentforceSessionResponse>(accessToken, url, {
+    method: "POST",
+    body: JSON.stringify({
+      externalSessionKey: sessionKey,
+      instanceConfig: {
+        endpoint: myDomainUrl
+      },
+      streamingCapabilities: {
+        chunkTypes: ["Text"]
+      },
+      bypassUser: true
+    })
+  });
+  const sessionId = extractSessionId(payload);
+
+  if (!sessionId) {
+    throw new Error(`Agentforce start session did not return a session id: ${JSON.stringify(payload)}`);
+  }
+
+  return sessionId;
+}
+
+async function sendSynchronousAgentforceMessage(
+  accessToken: string,
+  apiHost: string,
+  sessionId: string,
+  message: string
+) {
+  const url = `${apiHost}/einstein/ai-agent/v1/sessions/${sessionId}/messages`;
+  return agentforceRequest<unknown>(accessToken, url, {
+    method: "POST",
+    body: JSON.stringify({
+      message: {
+        sequenceId: 1,
+        type: "Text",
+        text: message
+      }
+    })
+  });
+}
+
+async function endAgentforceSession(accessToken: string, apiHost: string, sessionId: string) {
+  const url = `${apiHost}/einstein/ai-agent/v1/sessions/${sessionId}`;
+
+  try {
+    await agentforceRequest<unknown>(accessToken, url, { method: "DELETE" });
+  } catch {
+    // Ending the session is cleanup only. Preserve the main agent response if cleanup fails.
+  }
+}
+
 export async function sendAgentforceMessage(
   accessToken: string,
   message = DEFAULT_AGENT_MESSAGE
 ): Promise<AgentforceMessageResponse> {
-  const { agentId, apiUrl } = getAgentforceConfig();
-  const response = await fetch(apiUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      agentId,
-      message,
-      messages: [
-        {
-          role: "user",
-          content: message
-        }
-      ]
-    }),
-    cache: "no-store"
-  });
+  const { agentId, apiHost, myDomainUrl } = getAgentforceConfig();
+  const sessionId = await startAgentforceSession(accessToken, agentId, apiHost, myDomainUrl);
 
-  const rawText = await response.text();
-  let payload: unknown = rawText;
+  try {
+    const responsePayload = await sendSynchronousAgentforceMessage(
+      accessToken,
+      apiHost,
+      sessionId,
+      message
+    );
 
-  if (rawText) {
-    try {
-      payload = JSON.parse(rawText);
-    } catch {
-      payload = rawText;
-    }
-  } else {
-    payload = null;
+    return {
+      text: extractAgentResponseText(responsePayload),
+      raw: responsePayload
+    };
+  } finally {
+    await endAgentforceSession(accessToken, apiHost, sessionId);
   }
-
-  if (!response.ok) {
-    throw new Error(`Agentforce request failed: ${response.status} ${rawText}`);
-  }
-
-  return {
-    text: extractAgentResponseText(payload),
-    raw: payload
-  };
 }
 
 export { DEFAULT_AGENT_MESSAGE };
-

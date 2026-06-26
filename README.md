@@ -51,7 +51,7 @@ Direct Salesforce REST API actions:
 Agentforce demo path:
 
 - Send a fixed case-creation request to `/api/agentforce/message`
-- Forward that message to the configured Headless Agentforce API endpoint
+- Start an Agent API session, send the message to the configured Headless Agentforce agent, and return the agent response
 - Display the agent response in the Assistant chat
 
 A future version can expand the Agentforce path so more chat messages are routed through Agentforce and the Salesforce agent decides which Flow or action to execute.
@@ -95,7 +95,8 @@ SALESFORCE_CLIENT_SECRET=your_client_secret
 SALESFORCE_REDIRECT_URI=http://localhost:3000/api/auth/callback
 SALESFORCE_API_VERSION=v61.0
 SALESFORCE_AGENT_ID=
-SALESFORCE_AGENT_API_URL=
+SALESFORCE_AGENT_API_HOST=https://api.salesforce.com
+SALESFORCE_MY_DOMAIN_URL=https://your-domain.my.salesforce.com
 ```
 
 For a Salesforce sandbox, use:
@@ -151,7 +152,7 @@ The Assistant includes a **Create Case with Agent** action. It sends this messag
 Create a support case for muthuselvithanu@gmail.com. Subject is Billing issue. Description is customer was charged twice. Priority is High.
 ```
 
-The backend forwards the message to the configured Headless Agentforce API endpoint using the existing Salesforce OAuth access token.
+The backend starts an Agent API session, sends the message using the returned session id, and then shows the Agentforce response in chat. It uses the existing Salesforce OAuth access token.
 
 ### Update Contact
 
@@ -200,4 +201,5 @@ The frontend does not expose the Salesforce Client Secret or Salesforce access t
 This project demonstrates a headless Salesforce architecture where React provides the user experience and Salesforce acts as the secure backend system. It shows practical knowledge of React, Next.js, Salesforce OAuth, REST APIs, secure API routes, and customer support workflows.
 
 GitHub: https://github.com/muthuselvithanu
+
 
