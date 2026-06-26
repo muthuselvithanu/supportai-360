@@ -118,7 +118,8 @@ async function parseResponse(response: Response) {
 async function agentforceRequest<T>(
   accessToken: string,
   url: string,
-  init: RequestInit
+  init: RequestInit,
+  context: string
 ): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -132,7 +133,8 @@ async function agentforceRequest<T>(
   const payload = await parseResponse(response);
 
   if (!response.ok) {
-    throw new Error(`Agentforce request failed: ${response.status} ${JSON.stringify(payload)}`);
+    const detail = payload ? JSON.stringify(payload) : "empty response body";
+    throw new Error(`${context} failed: ${response.status}. URL: ${url}. Response: ${detail}`);
   }
 
   return payload as T;
@@ -158,7 +160,7 @@ async function startAgentforceSession(
       },
       bypassUser: true
     })
-  });
+  }, "Agentforce start session");
   const sessionId = extractSessionId(payload);
 
   if (!sessionId) {
@@ -184,14 +186,14 @@ async function sendSynchronousAgentforceMessage(
         text: message
       }
     })
-  });
+  }, "Agentforce send message");
 }
 
 async function endAgentforceSession(accessToken: string, apiHost: string, sessionId: string) {
   const url = `${apiHost}/einstein/ai-agent/v1/sessions/${sessionId}`;
 
   try {
-    await agentforceRequest<unknown>(accessToken, url, { method: "DELETE" });
+    await agentforceRequest<unknown>(accessToken, url, { method: "DELETE" }, "Agentforce end session");
   } catch {
     // Ending the session is cleanup only. Preserve the main agent response if cleanup fails.
   }
@@ -222,3 +224,4 @@ export async function sendAgentforceMessage(
 }
 
 export { DEFAULT_AGENT_MESSAGE };
+
